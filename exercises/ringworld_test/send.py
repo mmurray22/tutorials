@@ -23,11 +23,12 @@ def main():
     # Send local rack level packets
     i = 0
     addr = socket.gethostbyname('10.0.1.1')
+    dst_id=1
     while i <= 3:
         try:
             pkt = Ether(dst='ff:ff:ff:ff:ff:ff', src=get_if_hwaddr('eth0'))
             pkt = pkt / SeqNo(server_id=1)
-            pkt = pkt / IP(dst=addr) / UDP(dport=4321, sport=1234)
+            pkt = pkt / MyTunnel(dst_id=dst_id) / IP(dst=addr)
             pkt.show2()
             sendp(pkt, iface='eth0')
             i += 1
@@ -37,11 +38,13 @@ def main():
 
     # Send control packet around to create global counter
     addr = socket.gethostbyname("10.0.3.3")
+    dst_id=3
     iface = get_if()
     print("sending on interface %s to %s" % (iface, str(addr))) 
-    pkt = Ether(dst='ff:ff:ff:ff:ff:ff', src=get_if_hwaddr('eth0'))  
-    pkt = pkt / SeqNo(server_id=0)	    
-    pkt = pkt / IP(dst=addr) / UDP(dport=4321, sport=1234)
+    print("sending on interface {} to dst_id {}".format(iface, str(dst_id)))
+    pkt =  Ether(src=get_if_hwaddr(iface), dst='ff:ff:ff:ff:ff:ff')
+    pkt = pkt / SeqNo(server_id=0) / MyTunnel(dst_id=dst_id) / IP(dst=addr)
+    #pkt = pkt / IP(dst=addr) / UDP(dport=4321, sport=1234)
     pkt.show2()
     sendp(pkt, iface='eth0')
 

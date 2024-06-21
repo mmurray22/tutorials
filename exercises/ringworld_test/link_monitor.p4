@@ -3,7 +3,7 @@
 #include <core.p4>
 #include <v1model.p4>
 
-onst bit<16> TYPE_MYTUNNEL = 0x1212
+const bit<16> TYPE_TUNNEL = 0x1212;
 const bit<16> TYPE_IPV4  = 0x800;
 const bit<16> TYPE_SEQ_NO_REQ = 0x820;
 #define STORAGE_SERVERS 1
@@ -150,12 +150,6 @@ control MyIngress(inout headers hdr,
         hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
-    /*action update_acks_reg() {
-    }*/
-
-    /*action tail_update_forward() {
-    }*/
-
     table ipv4_lpm {
         key = {
             hdr.ipv4.dstAddr: lpm;
@@ -167,6 +161,22 @@ control MyIngress(inout headers hdr,
         }
         size = 1024;
         default_action = drop();
+    }
+   
+    action myTunnel_forward(egressSpec_t port) {
+	standard_metadata.egress_spec = port;
+    }
+
+    table myTunnel_exact {
+	key = {
+	   hdr.myTunnel.dst_id: exact;
+	}
+	actions = {
+	   myTunnel_forward;
+	   drop;
+	}
+	size = 1024;
+	default_action = drop();
     }
 
     apply {
@@ -186,7 +196,11 @@ control MyIngress(inout headers hdr,
 	if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
         }
-           
+
+ 	if (hdr.myTunnel.isValid()) {
+	    myTunnel_exact.apply();
+	}
+          
     }
 }
 
@@ -232,6 +246,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
 	packet.emit(hdr.seqno);
+	packet.emit(hdr.myTunnel);
         packet.emit(hdr.ipv4);
     }
 }
