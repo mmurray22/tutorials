@@ -175,7 +175,7 @@ make clean
 #### Running the reference solution
 
 To run the reference solution, you should run the following command from the
-`~/tutorials/exercises/p4runtime` directory:
+`~/tutorials/P4D2_2017_Fall/exercises/p4runtime` directory:
 ```bash
 solution/mycontroller.py
 ```

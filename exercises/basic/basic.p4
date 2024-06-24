@@ -52,8 +52,15 @@ parser MyParser(packet_in packet,
                 inout standard_metadata_t standard_metadata) {
 
     state start {
-        /* TODO: add parser logic */
-        transition accept;
+	packet.extract(hdr.ethernet);
+	transition select(hdr.ethernet.etherType) { // Why does this work? I thought headers was write-only
+		0x800: parse_ipv4; // this is the type of ipv4!
+		default: accept;
+	}
+    }
+    state parse_ipv4 {
+	packet.extract(hdr.ipv4);
+	transition accept;
     }
 }
 
@@ -88,10 +95,11 @@ control MyIngress(inout headers hdr,
             Parameters:
             - dstAddr: Destination MAC address of the packet.
             - port: Egress port where the packet should be forwarded.
-
-            TODO: Implement the logic for forwarding the IPv4 packet based on the
-            destination MAC address and egress port.
         */
+	hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
+	hdr.ethernet.dstAddr = dstAddr;
+	standard_metadata.egress_spec = port;
+	hdr.ipv4.ttl = hdr.ipv4.ttl - 1;
     }
 
     table ipv4_lpm {
@@ -108,10 +116,11 @@ control MyIngress(inout headers hdr,
     }
 
     apply {
-        /* TODO: fix ingress control logic
-         *  - ipv4_lpm should be applied only when IPv4 header is valid
+        /* ipv4_lpm should be applied only when IPv4 header is valid
          */
-        ipv4_lpm.apply();
+	if (hdr.ipv4.isValid()) {
+		ipv4_lpm.apply();
+	}
     }
 }
 
@@ -165,10 +174,9 @@ control MyDeparser(packet_out packet, in headers hdr) {
         Parameters:
         - packet: Output packet to be constructed.
         - hdr: Input headers to be added to the output packet.
-
-        TODO: Implement the logic for constructing the output packet by appending
-        headers based on the input headers.
         */
+	packet.emit(hdr.ethernet);
+	packet.emit(hdr.ipv4);
     }
 }
 

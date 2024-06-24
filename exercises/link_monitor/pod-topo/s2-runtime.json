@@ -8,22 +8,19 @@
       "default_action": true,
       "action_name": "MyEgress.set_swid",
       "action_params": {
-        "swid": 2
-      }
+         "swid": 2
+       }
     },
     {
       "table": "MyIngress.ipv4_lpm",
       "default_action": true,
       "action_name": "MyIngress.drop",
-      "action_params": {}
+      "action_params": { }
     },
     {
       "table": "MyIngress.ipv4_lpm",
       "match": {
-        "hdr.ipv4.dstAddr": [
-          "10.0.1.1",
-          32
-        ]
+        "hdr.ipv4.dstAddr": ["10.0.1.1", 32]
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {
@@ -34,10 +31,7 @@
     {
       "table": "MyIngress.ipv4_lpm",
       "match": {
-        "hdr.ipv4.dstAddr": [
-          "10.0.2.2",
-          32
-        ]
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {
@@ -48,10 +42,7 @@
     {
       "table": "MyIngress.ipv4_lpm",
       "match": {
-        "hdr.ipv4.dstAddr": [
-          "10.0.3.3",
-          32
-        ]
+        "hdr.ipv4.dstAddr": ["10.0.3.3", 32]
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {
@@ -62,10 +53,7 @@
     {
       "table": "MyIngress.ipv4_lpm",
       "match": {
-        "hdr.ipv4.dstAddr": [
-          "10.0.4.4",
-          32
-        ]
+        "hdr.ipv4.dstAddr": ["10.0.4.4", 32]
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {

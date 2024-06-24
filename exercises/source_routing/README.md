@@ -136,11 +136,11 @@ There are several ways that problems might manifest:
 #### Cleaning up Mininet
 
 In the cases above, `make` may leave a Mininet instance running in
-the background. Use the following command to clean up these
+the background.  Use the following command to clean up these
 instances:
 
 ```bash
-make stop
+mn -c
 ```
 
 ## Next Steps
