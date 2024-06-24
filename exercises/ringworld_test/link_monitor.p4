@@ -219,8 +219,12 @@ control MyIngress(inout headers hdr,
 		global_seq_no_reg.write(0, seq_no);
 	    } else {
 		// Updating the rack local sequence counter
-	        seq_no = seq_no + 1;
+	        bit<32> global_seq_no;
+		global_seq_no_reg.read(global_seq_no, 0);
+		seq_no = seq_no + 1;
 		rack_seq_no_reg.write(0, seq_no);
+		seq_no = global_seq_no + seq_no;
+		hdr.seqno.seq_no = seq_no;
 	    }
         }
 
