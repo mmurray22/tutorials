@@ -1,6 +1,6 @@
 {
   "target": "bmv2",
-  "p4info": "build/link_monitor.p4.p4info.txt",
+  "p4info": "build/log.p4.p4info.txt",
   "bmv2_json": "build/link_monitor.json",
   "table_entries": [
     {
@@ -16,18 +16,18 @@
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {
-        "dstAddr": "08:00:00:00:01:00",
+        "dstAddr": "08:00:00:00:03:00",
         "port": 2
       }
     },
     {
       "table": "MyIngress.ipv4_lpm",
       "match": {
-        "hdr.ipv4.dstAddr": ["10.0.3.3", 32]
+        "hdr.ipv4.dstAddr": ["10.0.2.2", 32]
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {
-        "dstAddr": "08:00:00:00:02:00",
+        "dstAddr": "08:00:00:00:04:00",
         "port": 1
       }
     },
@@ -38,7 +38,7 @@
       },
       "action_name": "MyIngress.ipv4_forward",
       "action_params": {
-        "dstAddr": "08:00:00:00:02:00",
+        "dstAddr": "08:00:00:00:04:44",
         "port": 3
       }
     },
@@ -49,7 +49,7 @@
       },
       "action_name": "MyIngress.myTunnel_forward",
       "action_params": {
-        "port": 2
+        "port": 3
       }
     },
     {
@@ -59,7 +59,7 @@
       },
       "action_name": "MyIngress.myTunnel_forward",
       "action_params": {
-        "port": 2
+        "port": 1
       }
     },
     {
@@ -69,7 +69,7 @@
       },
       "action_name": "MyIngress.myTunnel_forward",
       "action_params": {
-        "port": 1
+        "port": 3
       }
     },
     {
@@ -79,9 +79,8 @@
       },
       "action_name": "MyIngress.myTunnel_forward",
       "action_params": {
-        "port": 2
+        "port": 3
       }
     }
-
   ]
 }

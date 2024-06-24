@@ -397,7 +397,7 @@ A sample "secondary" makefile is shown below, this file uses the "main" makefile
 BMV2_SWITCH_EXE = simple_switch_grpc
 TOPO = pod-topo/topology.json
 
-include ../../utils/Makefile
+include ../utils/Makefile
 ```
 
 ## Wrap-up
