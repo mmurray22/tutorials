@@ -49,20 +49,27 @@ header myTunnel_t {
     bit<16> dst_id;
 }
 
-// TODO: Header for sequence number rack packet
+// Header for sequence number rack/control packet
 header seq_no_t {
    // If server_id = 0, this is the control packet sent from another switch
    // Any other number indicates this is from a server in the switch's rack
    bit<8> server_id;
-   // Do we need this: bit<8> switch_id;
+   // If server_id = 0, this value does not matter and will be set to the next highest local seq_no
+   // If this is the control packet, this is the current global sequence number.
    bit<32> seq_no;
 }
 
-// TODO: Header for sequence number control packet
+// Header for updating tail
+header tail_t {
+   bit<32> tail;  // Sequence number of the tail of the log
 
-// TODO: Header for updating tail
+}
 
-// TODO: Header for ack rack packet
+// Header for ack rack packet
+header ack_t {
+    bit<32> seqno_ack; // Sequence number the server is acking
+    bit<32> storage_server_id; // ID of the server in the rack
+}
 
 struct metadata {
     bit<8> egress_spec;
@@ -70,7 +77,9 @@ struct metadata {
 
 struct headers {
     ethernet_t              ethernet;
+    //ack_t                   ack_tracker; // Only for in-rack packets
     seq_no_t                seqno;
+    tail_t                  update_tail;
     myTunnel_t              myTunnel;
     ipv4_t                  ipv4;
 }
@@ -90,6 +99,7 @@ parser MyParser(packet_in packet,
 
     state parse_ethernet {
         packet.extract(hdr.ethernet);
+        // TODO: Add another EtherType for counting Acks
         transition select(hdr.ethernet.etherType) {
             TYPE_TUNNEL: parse_tunnel;
 	    TYPE_IPV4: parse_ipv4;
@@ -100,9 +110,14 @@ parser MyParser(packet_in packet,
 
     state parse_seqno {
 	packet.extract(hdr.seqno);
+ 	transition parse_update_tail;
+    }
+    
+    state parse_update_tail {
+	packet.extract(hdr.update_tail);
  	transition parse_tunnel;
     }
-   
+
     state parse_tunnel {
 	packet.extract(hdr.myTunnel);
 	transition select(hdr.myTunnel.proto_id) {
@@ -133,10 +148,24 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
-    // Registers
-    register<bit<32>>(1) rack_seq_no_reg;
-    register<bit<MAX_OUTSTANDING_APPENDS>>(STORAGE_SERVERS) rack_acks_reg;
+    /** Registers **/
+    // Sequence number registers
+    register<bit<32>>(1) rack_seq_no_reg; // Rack local sequence number. Reset each time it's added to global counter
+    register<bit<32>>(1) global_seq_no_reg; // Global sequence number. Updated every time control packet is received
+
+
+    // Acking register: 2D array tracking outstanding appends from the rack's storage servers. 
+    //(TODO) Updated each time a packet with an ack_t header is received.
+    // If an outstanding append reaches a quorum of acks, it is replaced with the next highest seq_no with outstanding acks
+    // and all ack entries for the servers are set to zero. 
+    register<bit<32>>(MAX_OUTSTANDING_APPENDS * STORAGE_SERVERS) rack_acks_reg;    
+
+    // Tail registers
+    // Latest tail tracked by switch
+    // Updated either by external packet reporting higher tail or local ack counter reaching quorum threshold
     register<bit<32>>(1) log_tail_reg;
+    // Locally tracks number of acks until tail can advance
+    register<bit<32>>(1) log_next_tail_acks_reg;
 
     action drop() {
         mark_to_drop(standard_metadata);
@@ -181,17 +210,30 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (hdr.seqno.isValid()) {
-	    // Update local sequence number
 	    bit<32> seq_no;
 	    rack_seq_no_reg.read(seq_no, 0);
 	    if (hdr.seqno.server_id == 0) {
+		// Updating the global sequence counter
 		seq_no = seq_no + hdr.seqno.seq_no;
+		hdr.seqno.seq_no = seq_no;
+		global_seq_no_reg.write(0, seq_no);
 	    } else {
+		// Updating the rack local sequence counter
 	        seq_no = seq_no + 1;
+		rack_seq_no_reg.write(0, seq_no);
 	    }
-	    hdr.seqno.seq_no = seq_no;
-	    rack_seq_no_reg.write(0, seq_no);
         }
+
+	if (hdr.update_tail.isValid()) {
+	    bit<32> tail;
+	    log_tail_reg.read(tail, 0);
+	    if (hdr.update_tail.tail > tail) {
+		tail = hdr.update_tail.tail;
+		log_tail_reg.write(0, tail);
+	    } else if (tail > hdr.update_tail.tail) {
+	        hdr.update_tail.tail = tail;
+	    }
+	}
 
 	if (hdr.ipv4.isValid()) {
             ipv4_lpm.apply();
@@ -199,8 +241,7 @@ control MyIngress(inout headers hdr,
 
  	if (hdr.myTunnel.isValid()) {
 	    myTunnel_exact.apply();
-	}
-          
+	} 
     }
 }
 
@@ -211,7 +252,7 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-	apply { }
+	apply { } // TODO: Add acking packets here for sequence counters
 }
 
 /*************************************************************************
@@ -246,6 +287,7 @@ control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
 	packet.emit(hdr.seqno);
+	packet.emit(hdr.update_tail);
 	packet.emit(hdr.myTunnel);
         packet.emit(hdr.ipv4);
     }

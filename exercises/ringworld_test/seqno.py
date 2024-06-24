@@ -13,10 +13,15 @@ class MyTunnel(Packet):
     def mysummary(self):
         return self.sprintf("pid=%pid%, dst_id=%dst_id%")
 
+class UpdateTail(Packet):
+   fields_desc = [ IntField("tail", 0)]
+
+
 class SeqNo(Packet):
    fields_desc = [ ByteField("server_id", 0),
                    IntField("seq_no", 0)]
 
 bind_layers(Ether, SeqNo, type=TYPE_SEQNO)
-bind_layers(SeqNo, MyTunnel)
+bind_layers(SeqNo, UpdateTail)
+bind_layers(UpdateTail, MyTunnel)
 bind_layers(MyTunnel, IP, pid=TYPE_IPV4)

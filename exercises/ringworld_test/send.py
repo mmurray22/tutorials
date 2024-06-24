@@ -28,6 +28,7 @@ def main():
         try:
             pkt = Ether(dst='ff:ff:ff:ff:ff:ff', src=get_if_hwaddr('eth0'))
             pkt = pkt / SeqNo(server_id=1)
+            pkt = pkt / UpdateTail(tail=0)
             pkt = pkt / MyTunnel(dst_id=dst_id) / IP(dst=addr)
             pkt.show2()
             sendp(pkt, iface='eth0')
@@ -35,10 +36,12 @@ def main():
             time.sleep(1)
         except KeyboardInterrupt:
             sys.exit()
+    return
+
 
     # Send control packet around to create global counter
-    addr = socket.gethostbyname("10.0.3.3")
-    dst_id=3
+    addr = socket.gethostbyname("10.0.4.4")
+    dst_id=4
     iface = get_if()
     print("sending on interface %s to %s" % (iface, str(addr))) 
     print("sending on interface {} to dst_id {}".format(iface, str(dst_id)))
