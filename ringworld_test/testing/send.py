@@ -19,7 +19,6 @@ def get_if():
     return iface
 
 def main():
-
     # Send local rack level packets
     i = 0
     addr = socket.gethostbyname('10.0.1.1')

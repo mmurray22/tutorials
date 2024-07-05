@@ -6,6 +6,7 @@
 const bit<16> TYPE_TUNNEL = 0x1212;
 const bit<16> TYPE_IPV4  = 0x800;
 const bit<16> TYPE_SEQ_NO_REQ = 0x820;
+const bit<16> TYPE_ACK = 0x840;
 #define STORAGE_SERVERS 1
 #define MAX_OUTSTANDING_APPENDS 10
 #define MAX_HOPS 10
@@ -62,24 +63,30 @@ header seq_no_t {
 // Header for updating tail
 header tail_t {
    bit<32> tail;  // Sequence number of the tail of the log
+}
 
+// Header indicating that this is an ack packet
+header is_ack_t {
+    bit<8> has_ack;
 }
 
 // Header for ack rack packet
 header ack_t {
-    bit<32> seqno_ack; // Sequence number the server is acking
+    bit<32> seqno_ack; // Sequence number the server is acking. 
+    // DUMB APPROACH: Currently repeats the ack MAX_OUTSTANDING num of times to iterate in the seqno
     bit<32> storage_server_id; // ID of the server in the rack
 }
 
 struct metadata {
-    bit<8> egress_spec;
+    bit<32> ack_seq_no_idx;
 }
 
 struct headers {
     ethernet_t              ethernet;
-    //ack_t                   ack_tracker; // Only for in-rack packets
-    seq_no_t                seqno;
-    tail_t                  update_tail;
+    is_ack_t                is_ack_pkt;
+    ack_t[MAX_OUTSTANDING_APPENDS]    ack_tracker; // Only for in-rack packets
+    seq_no_t                          seqno;
+    tail_t                            update_tail;
     myTunnel_t              myTunnel;
     ipv4_t                  ipv4;
 }
@@ -93,6 +100,11 @@ parser MyParser(packet_in packet,
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
 
+
+    register<bit<32>>(MAX_OUTSTANDING_APPENDS) idx_to_seq_no_map;    
+
+    register<bit<32>>(1) idx;
+
     state start {
         transition parse_ethernet;
     }
@@ -104,9 +116,40 @@ parser MyParser(packet_in packet,
             TYPE_TUNNEL: parse_tunnel;
 	    TYPE_IPV4: parse_ipv4;
 	    TYPE_SEQ_NO_REQ: parse_seqno;
+	    TYPE_ACK: parse_ack;
             default: accept;
         }
     }
+
+    state parse_ack {
+	packet.extract(hdr.is_ack_pkt);
+	idx.write(0, MAX_OUTSTANDING_APPENDS);
+	transition parse_ack_subroutine;
+    }
+
+   state parse_ack_subroutine {
+	 // TODO: Ideally would like to extract only one value each iteration (not build full array)
+	packet.extract(hdr.ack_tracker.next);
+	bit<32> local_idx;
+	idx.read(local_idx, 0);
+	local_idx = local_idx - 1;
+	bit<32> seqno;
+	bit<32> success;
+	if (local_idx == 0) {
+	    seqno = hdr.ack_tracker.last.seqno_ack;
+	    meta.ack_seq_no_idx = MAX_OUTSTANDING_APPENDS + 1;
+	    success = 0;
+	} else {
+	    bit<32> chosen_seqno;
+	    idx_to_seq_no_map.read(chosen_seqno, local_idx);
+	    meta.ack_seq_no_idx = chosen_seqno;
+	    success = chosen_seqno - hdr.ack_tracker.last.seqno_ack;
+	}
+	transition select(success) {
+	    0: parse_seqno; 
+	    default: parse_ack_subroutine;
+	}	
+   }
 
     state parse_seqno {
 	packet.extract(hdr.seqno);
@@ -147,7 +190,9 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 
 control MyIngress(inout headers hdr,
                   inout metadata meta,
-                  inout standard_metadata_t standard_metadata) {
+            
+
+    inout standard_metadata_t standard_metadata) {
     /** Registers **/
     // Sequence number registers
     register<bit<32>>(1) rack_seq_no_reg; // Rack local sequence number. Reset each time it's added to global counter
@@ -157,8 +202,8 @@ control MyIngress(inout headers hdr,
     // Acking register: 2D array tracking outstanding appends from the rack's storage servers. 
     //(TODO) Updated each time a packet with an ack_t header is received.
     // If an outstanding append reaches a quorum of acks, it is replaced with the next highest seq_no with outstanding acks
-    // and all ack entries for the servers are set to zero. 
-    register<bit<32>>(MAX_OUTSTANDING_APPENDS * STORAGE_SERVERS) rack_acks_reg;    
+    // and all ack entries for the servers are set to zero.
+    register<bit<32>>(STORAGE_SERVERS * MAX_OUTSTANDING_APPENDS) rack_acks_reg;    
 
     // Tail registers
     // Latest tail tracked by switch
@@ -237,6 +282,10 @@ control MyIngress(inout headers hdr,
 	    } else if (tail > hdr.update_tail.tail) {
 	        hdr.update_tail.tail = tail;
 	    }
+	}
+
+	if (hdr.is_ack_pkt.isValid()) { // TODO COMMENT
+	    rack_acks_reg.write(MAX_OUTSTANDING_APPENDS*hdr.ack_tracker[0].storage_server_id + meta.ack_seq_no_idx, 1);
 	}
 
 	if (hdr.ipv4.isValid()) {
