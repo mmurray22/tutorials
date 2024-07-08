@@ -131,6 +131,24 @@ class SwitchConnection(object):
             for response in self.client_stub.Read(request):
                 yield response
 
+    def UpdateAckInfo(self, register_id=None, index=None, dry_run=False):
+        # Part 1 - Create a request and send it to the P4 program 
+        request = p4runtime_pb2.ReadRequest()
+        entity = request.entities.add()
+        register_entry = entity.register_entry
+        if register_id is not None:
+            register_entry.register_id = register_id
+        else:
+            register_entry.register_id = 0
+        #if index is not None:
+            #register_entry.index = index
+        if dry_run:
+            print("P4Runtime Read:", request)
+        else:
+            for response in self.client_stub.Read(request):
+                # Read response from P4 program
+                print("P4Runtime Response: ", response)
+                yield response
 
     def WritePREEntry(self, pre_entry, dry_run=False):
         request = p4runtime_pb2.WriteRequest()
