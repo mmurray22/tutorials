@@ -6,8 +6,7 @@
 const bit<16> TYPE_TUNNEL = 0x1212;
 const bit<16> TYPE_IPV4  = 0x800;
 const bit<16> TYPE_CONTROL = 0x820;
-const bit<16> TYPE_TAIL = 0x840;
-const bit<16> TYPE_CLI_SEQ = 0x880;
+const bit<16> TYPE_ACK = 0x840;
 #define RACK_STORAGE_SERVERS 1
 #define QUORUM_SIZE 3 // f+1
 #define MAX_OUTSTANDING_APPENDS 10
@@ -47,6 +46,11 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+// NOTE: added new header type
+header myTunnel_t {
+    bit<16> proto_id;
+    bit<16> dst_id;
+}
 
 // Header for sequence number requests
 header sequence_no_request_t {
@@ -65,19 +69,30 @@ header control_pkt_t {
    bit<32> global_seq_no;
 }
 
-// Header for tunnelling 
-header myTunnel_t {
-    bit<16> proto_id;
-    bit<16> dst_id;
+// Header for updating tail
+header tail_t {
+   bit<32> tail;  // Sequence number of the tail of the log
 }
 
+// Header for ack rack packet
+header ack_t {
+    bit<32> seqno_ack; // Sequence number the server is acking. 
+    // DUMB APPROACH: Currently repeats the ack MAX_OUTSTANDING num of times to iterate in the seqno
+    bit<32> storage_server_id; // ID of the server in the rack
+}
+
+// Header: packet_out (read), packet_in (write) 
+
+
 struct metadata {
+    bit<32> ack_seq_no_idx;
 }
 
 struct headers {
     ethernet_t              ethernet;
+    ack_t                   ack_tracker; // Only for in-rack packets
     control_pkt_t           cntrl;
-    sequence_no_request_t   client_req;
+    tail_t                  update_tail;
     myTunnel_t              myTunnel;
     ipv4_t                  ipv4;
 }
@@ -98,32 +113,39 @@ parser MyParser(packet_in packet,
 
     state parse_ethernet {
         packet.extract(hdr.ethernet);
+        // TODO: Add another EtherType for counting Acks
         transition select(hdr.ethernet.etherType) {
             TYPE_TUNNEL: parse_tunnel;
 	    TYPE_IPV4: parse_ipv4;
 	    TYPE_CONTROL: parse_control;
- 	    TYPE_CLI_SEQ: parse_client_seq;
+	    TYPE_ACK: parse_ack;
             default: accept;
         }
     }
 
+    state parse_ack {
+	packet.extract(hdr.ack_tracker);
+	meta.ack_seq_no_idx = 0;
+	transition parse_control;
+    }
+
     state parse_control {
 	packet.extract(hdr.cntrl);
- 	transition parse_tunnel;
+ 	transition parse_update_tail;
     }
     
+    state parse_update_tail {
+	packet.extract(hdr.update_tail);
+ 	transition parse_tunnel;
+    }
+
     state parse_tunnel {
 	packet.extract(hdr.myTunnel);
 	transition select(hdr.myTunnel.proto_id) {
-	    TYPE_IPV4: parse_ipv4;
+	    0x0800: parse_ipv4;
 	    default: accept;
 	}
     }
-
-   state parse_client_seq {
-	packet.extract(hdr.client_req);
-	transition parse_ipv4;
-   }
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
@@ -149,11 +171,27 @@ control MyIngress(inout headers hdr,
             
 
     inout standard_metadata_t standard_metadata) {
-   
     /** Registers **/
     // Sequence number registers
     register<bit<32>>(1) local_seq_cntr_reg; // Rack local sequence number. Reset each time it's added to global counter
     register<bit<32>>(1) last_seen_global_seq_no_reg; // Global sequence number. Updated every time control packet is received
+
+
+    // Acking register: 2D array tracking outstanding appends from the rack's storage servers. 
+    // Updated each time a packet with an ack_t header is received.
+    // If an outstanding append reaches a quorum of acks, it is replaced with the next highest seq_no with outstanding acks
+    // and all ack entries for the servers are set to zero.
+    register<bit<MAX_OUTSTANDING_APPENDS>>(QUORUM_SIZE) acks_reg;    
+    register<bit<MAX_OUTSTANDING_APPENDS>>(QUORUM_SIZE) is_ack_done_reg;
+    register<bit<MAX_OUTSTANDING_APPENDS>>(1) ack_counter; 
+    register<bit<32>> most_recent_acked_seqno; // To prevent processing stale acks 
+
+    // Tail registers
+    // Latest tail tracked by switch
+    // Updated either by external packet reporting higher tail or local ack counter reaching quorum threshold
+    register<bit<32>>(1) log_tail_reg;
+    // Locally tracks number of acks until tail can advance
+    register<bit<32>>(1) log_next_tail_acks_reg;
 
     action drop() {
         mark_to_drop(standard_metadata);
@@ -197,32 +235,55 @@ control MyIngress(inout headers hdr,
     }
 
     apply {
-
-	// Control packet: Sequence number update
         if (hdr.cntrl.isValid()) {
-	    // Read the registers
-	    bit<32> global_seq_no;
-	    last_seen_global_seq_no_reg.read(global_seq_no, 0);
-	    bit<32> local_cntr;
-	    local_seq_cntr_reg.read(local_cntr, 0);
+	    bit<32> seq_no;
+	    rack_seq_no_reg.read(seq_no, 0);
+	    // Updating the global sequence counter
+	    seq_no = seq_no + hdr.seqno.seq_no;
+	    hdr.cntrl.global_seq_no = seq_no;
+	    global_seq_no_reg.write(0, seq_no);
+	    } else {
+		// Updating the rack local sequence counter
+	        bit<32> global_seq_no;
+		global_seq_no_reg.read(global_seq_no, 0);
+		seq_no = seq_no + 1;
+		rack_seq_no_reg.write(0, seq_no);
+		seq_no = global_seq_no + seq_no;
+		hdr.seqno.seq_no = seq_no;
+	    }
+        }
 
-	    // Updating the global sequence counter and the last global offset
-	    hdr.cntrl.last_global_offset = hdr.cntrl.global_seq_no;
-	    global_seq_no = local_cntr  + hdr.cntrl.global_seq_no;
-	    hdr.cntrl.global_seq_no = global_seq_no;
-
-	    // Update the registers
-	    last_seen_global_seq_no_reg.write(0, global_seq_no);
-	    local_seq_cntr_reg.write(0, 0);
+	if (hdr.update_tail.isValid()) {
+	    bit<32> tail;
+	    log_tail_reg.read(tail, 0);
+	    if (hdr.update_tail.tail > tail) {
+		tail = hdr.update_tail.tail;
+		log_tail_reg.write(0, tail);
+	    } else if (tail > hdr.update_tail.tail) {
+	        hdr.update_tail.tail = tail;
+	    }
 	}
 
-	if (hdr.client_req.isValid()) {
-	    // Updating the local sequence counter
-	    bit<32> local_cntr; 
-	    local_seq_cntr_reg.read(local_cntr, 0);
-	    local_cntr = local_cntr + 1;
-	    hdr.client_req.local_sequence_no = local_cntr;
-	    local_seq_cntr_reg.write(0, local_cntr);
+	if (hdr.ack_tracker.isValid()) { // TODO COMMENT
+	    // Ack_tracker will have: storage_server_id, seqno
+	    // Determine what storage server this is related to
+	    bit<32> storage_id_idx;
+	    hash.mod(storage_id_idx, HashAlgorithm.identity, 0, {hdr.ack_tracker.storage_server_id}, QUORUM_SIZE); // TODO: Check this
+
+	    // Determine what sequence number is being appended
+	    int<32> idx_of_seqno;
+ 	    hash.mod(idx_of_seqno, HashAlgorithm.identity, 0, {hdr.ack_tracker.seqno}, MAX_OUTSTANDING_APPENDS); // TODO: Check this
+	    bit<MAX_OUTSTANDING_APPENDS> is_ack_done_ss;
+	    is_ack_done_reg.read(storage_id_idx, is_ack_done_ss);
+	
+
+
+
+	    // Update the counter for that sequence number
+            bit<MAX_OUTSTANDING_APPENDS> storage_server_acks;
+	    acks_reg.read(storage_id_idx, storage_server_acks);
+	    storage_server_acks 
+	    rack_acks_reg.write(MAX_OUTSTANDING_APPENDS*hdr.ack_tracker.storage_server_id + meta.ack_seq_no_idx, 1);
 	}
 
 	if (hdr.ipv4.isValid()) {
@@ -276,8 +337,8 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
-	packet.emit(hdr.cntrl);
-	packet.emit(hdr.client_req);
+	packet.emit(hdr.seqno);
+	packet.emit(hdr.update_tail);
 	packet.emit(hdr.myTunnel);
         packet.emit(hdr.ipv4);
     }
