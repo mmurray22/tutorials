@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from seqno import *
+from headers import *
 
 
 def expand(x):
@@ -10,7 +10,7 @@ def expand(x):
         yield x
 
 def handle_pkt(pkt):
-    if SeqNo in pkt:
+    if Cntrl in pkt:
         pkt.show2()
      #   for l in expand(pkt):
      #       if l.name=='SeqNo':
