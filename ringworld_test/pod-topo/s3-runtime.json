@@ -1,7 +1,7 @@
 {
   "target": "bmv2",
   "p4info": "build/log.p4.p4info.txt",
-  "bmv2_json": "build/link_monitor.json",
+  "bmv2_json": "build/log.json",
   "table_entries": [
     {
       "table": "MyIngress.ipv4_lpm",
@@ -104,7 +104,12 @@
         {
           "egress_port": 2,
           "instance": 1
+        },
+	{
+          "egress_port": 4,
+          "instance": 1
         }
+
       ]
     }
   ]

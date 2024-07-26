@@ -9,7 +9,6 @@ from ssh_util import *
 
 
 NUM_SWITCHES = 4
-RECEIVE_SCRIPT = "./receive.py"
 
 def get_if():
     ifs=get_if_list()
@@ -24,19 +23,22 @@ def get_if():
     return iface
 
 def main():
-    # Start by executing the receive command in the background
-    receive_thread = executeNonBlockingCommand(RECEIVE_SCRIPT)
-    receive_thread.start()
-    print("Just executed the async receive script") 
     # Send control packet around to create global counter
-    addr = socket.gethostbyname("10.0.4.4")
+    addr = socket.gethostbyname("10.0.9.9")
     dst_id=0
     iface = get_if()
     print("This is the control packet, being sent with dst_id = 0, so it should be sent forever") 
-    pkt =  Ether(src=get_if_hwaddr(iface), dst='ff:ff:ff:ff:ff:ff')
-    pkt = pkt / Cntrl() / MyTunnel(dst_id=dst_id) / IP(dst=addr)
-    pkt.show2()
-    sendp(pkt, iface='eth0')
+    while True:
+        try:
+            pkt =  Ether(src=get_if_hwaddr(iface), dst='ff:ff:ff:ff:ff:ff')
+            pkt = pkt / Cntrl() / MyTunnel(dst_id=dst_id) / IP(dst=addr)
+            #pkt.show2()
+            sendp(pkt, iface='eth0')
+            return
+            time.sleep(1)
+        except KeyboardInterrupt:  
+            sys.exit()      
+    return
 
 if __name__ == '__main__':
     main()

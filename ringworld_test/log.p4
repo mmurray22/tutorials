@@ -4,10 +4,10 @@
 #include <v1model.p4>
 
 const bit<16> TYPE_TUNNEL = 0x1212;
-const bit<16> TYPE_IPV4  = 0x800;
-const bit<16> TYPE_CONTROL = 0x820;
-const bit<16> TYPE_TAIL = 0x840;
-const bit<16> TYPE_CLI_SEQ = 0x880;
+const bit<16> TYPE_IPV4  = 0x0800;
+const bit<16> TYPE_CONTROL = 0x0820;
+const bit<16> TYPE_TAIL = 0x0840;
+const bit<16> TYPE_CLI_SEQ = 0x1414;
 #define RACK_STORAGE_SERVERS 1
 #define QUORUM_SIZE 3 // f+1
 #define MAX_OUTSTANDING_APPENDS 10
@@ -91,7 +91,6 @@ parser MyParser(packet_in packet,
                 inout metadata meta,
                 inout standard_metadata_t standard_metadata) {
 
-
     state start {
         transition parse_ethernet;
     }
@@ -99,11 +98,11 @@ parser MyParser(packet_in packet,
     state parse_ethernet {
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
+            TYPE_CONTROL: parse_control;
+ 	    TYPE_CLI_SEQ: parse_client_seq;
             TYPE_TUNNEL: parse_tunnel;
 	    TYPE_IPV4: parse_ipv4;
-	    TYPE_CONTROL: parse_control;
- 	    TYPE_CLI_SEQ: parse_client_seq;
-            default: accept;
+	    default: accept;
         }
     }
 
@@ -146,9 +145,7 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 
 control MyIngress(inout headers hdr,
                   inout metadata meta,
-            
-
-    inout standard_metadata_t standard_metadata) {
+		  inout standard_metadata_t standard_metadata) {
    
     /** Registers **/
     // Sequence number registers
@@ -159,7 +156,6 @@ control MyIngress(inout headers hdr,
         mark_to_drop(standard_metadata);
     }
 
-    // TODO: Make this infinite
     action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
         standard_metadata.egress_spec = port;
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
@@ -177,7 +173,7 @@ control MyIngress(inout headers hdr,
             NoAction;
         }
         size = 1024;
-        default_action = drop();
+        default_action = NoAction(); //drop();
     }
    
     action myTunnel_forward(egressSpec_t port) {
@@ -214,6 +210,8 @@ control MyIngress(inout headers hdr,
 	    // Update the registers
 	    last_seen_global_seq_no_reg.write(0, global_seq_no);
 	    local_seq_cntr_reg.write(0, 0);
+
+	    standard_metadata.mcast_grp = 1;
 	}
 
 	if (hdr.client_req.isValid()) {
@@ -242,7 +240,7 @@ control MyIngress(inout headers hdr,
 control MyEgress(inout headers hdr,
                  inout metadata meta,
                  inout standard_metadata_t standard_metadata) {
-	apply { } // TODO: Add acking packets here for sequence counters
+	apply { }
 }
 
 /*************************************************************************
