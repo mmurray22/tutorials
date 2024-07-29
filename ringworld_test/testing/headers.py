@@ -26,6 +26,9 @@ class SeqNoReq(Packet):
     name = "SeqNoReq"
     fields_desc = [ IntField("local_sequence_no", 0)]
  
+class StoreEntry(Packet):
+    fields_desc = [IntField("log_idx", 0)]
+
 
 bind_layers(Ether, Cntrl, type=TYPE_CNTRL)
 bind_layers(Cntrl, MyTunnel)
