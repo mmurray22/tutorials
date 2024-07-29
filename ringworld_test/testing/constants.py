@@ -1,1 +1,0 @@
-NUM_SWITCHES = 4

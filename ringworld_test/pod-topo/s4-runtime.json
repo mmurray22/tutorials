@@ -4,6 +4,14 @@
   "bmv2_json": "build/log.json",
   "table_entries": [
     {
+      "table": "MyIngress.swid",
+      "default_action": true,
+      "action_name": "MyIngress.set_swid",
+      "action_params": {
+         "swid": 4
+       }
+    },
+    {
       "table": "MyIngress.ipv4_lpm",
       "default_action": true,
       "action_name": "MyIngress.drop",

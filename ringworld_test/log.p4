@@ -148,9 +148,12 @@ control MyIngress(inout headers hdr,
 		  inout standard_metadata_t standard_metadata) {
    
     /** Registers **/
-    // Sequence number registers
     register<bit<32>>(1) local_seq_cntr_reg; // Rack local sequence number. Reset each time it's added to global counter
     register<bit<32>>(1) last_seen_global_seq_no_reg; // Global sequence number. Updated every time control packet is received
+    register<bit<32>>(1) tail; // Tail of the log, latest committed index
+    register<bit<32>>(1) epoch; // Keeps track of the number of rounds the control packet has made
+    register<bit<32>>(1) view_number; // Keeps track of the view (i.e. current configuration of the system)
+    register<bit<32>>(1) cntrl_id; // Control packet ID
 
     action drop() {
         mark_to_drop(standard_metadata);

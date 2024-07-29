@@ -39,10 +39,10 @@ def get_acks_thread(idx):
     sniff(iface = iface, prn = lambda x: get_acks(x, idx))
 
 async def store_entry(idx, log_entry):
-    ss_ids_arr = get_storage_server_ids(idx, NUM_RACKS, NUM_STORAGE_SERVERS_PER_RACK, NUM_STORAGE_FAILURES)
+    ss_ids_arr = get_storage_server_ids(idx, NUM_RACKS, NUM_RACKS*NUM_STORAGE_SERVERS_PER_RACK, NUM_STORAGE_FAILURES)
     for ss_id in ss_ids_arr:
         # Get IP address
-        ip = storage_server_ips[ss_ids[1]]
+        ip = storage_server_ips[ss_id]
         addr = socket.gethostbyname(ip)
         print("Address: ", addr)
         iface = get_if()
@@ -137,11 +137,11 @@ def readAt(idx):
         if idx in local_log_entries:
             return local_log_entries[idx] 
         # Step 1: Find where index is located
-	ss_ids_arr = get_storage_server_ids(idx, NUM_RACKS, NUM_STORAGE_SERVERS_PER_RACK, NUM_STORAGE_FAILURES)
+	ss_ids_arr = get_storage_server_ids(idx, NUM_RACKS, NUM_RACKS*NUM_STORAGE_SERVERS_PER_RACK, NUM_STORAGE_FAILURES)
         # Step 2: Send broadcast to those servers where it is located
         for ss_id in ss_ids_arr:
             # Get IP address
-            ip = storage_server_ips[ss_ids[1]]
+            ip = storage_server_ips[ss_id]
             addr = socket.gethostbyname(ip)
             print("Address: ", addr)
             iface = get_if()
