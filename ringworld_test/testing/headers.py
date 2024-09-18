@@ -29,6 +29,14 @@ class SeqNoReq(Packet):
 class StoreEntry(Packet):
     fields_desc = [IntField("log_idx", 0)]
 
+class AckEntry(Packet):
+    fields_desc = [IntField("log_idx", 0)]
+
+class SendEntry(Packet):
+    fields_desc = [IntField("log_idx", 0)]
+
+class GetEntry(Packet):
+    fields_desc = [IntField("log_idx", 0)]
 
 bind_layers(Ether, Cntrl, type=TYPE_CNTRL)
 bind_layers(Cntrl, MyTunnel)

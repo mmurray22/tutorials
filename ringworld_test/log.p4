@@ -47,6 +47,43 @@ header ipv4_t {
     ip4Addr_t dstAddr;
 }
 
+/******* Headers ********/
+
+// TODO: All these headers are very redundant :(
+// Header for indicating acking entry
+header ack_entry_t {
+    // Log index which is being acked
+    bit<32> log_idx;
+}
+
+// Header for requesting entry from storage server 
+header store_entry_t {
+    // Log index which is being stored
+    bit<32> log_idx;
+}
+
+// Header for replying to Read request
+header send_entry_t {
+    // Log index of entry storage server is sending to client 
+    bit<32> log_idx;
+}
+
+// Header for Read request
+header get_entry_t {
+    // Log index which client wants to read
+    bit<32> log_idx;
+}
+
+// Header for requesting tail
+header tail_req_t {
+    // Value which should be filled in by the switch with the latest tail sequence number
+    bit<32> tail_no;
+}
+
+// Header for updating the tail in the switch 
+header update_tail_t {
+    bit<32> tail_no;
+}
 
 // Header for sequence number requests
 header sequence_no_request_t {
@@ -78,6 +115,7 @@ struct headers {
     ethernet_t              ethernet;
     control_pkt_t           cntrl;
     sequence_no_request_t   client_req;
+    //update_tail_t           update_tail;
     myTunnel_t              myTunnel;
     ipv4_t                  ipv4;
 }
